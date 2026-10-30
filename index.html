@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>노후 준비 계산기</title>
+<meta name="description" content="소득·지출·연금을 넣으면 은퇴 시점 자산과 노후 현금흐름을 진단합니다.">
+<meta name="theme-color" content="#1C5A44" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1411" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<!-- 아이폰 홈 화면 앱 -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="노후계산기">
+<meta name="format-detection" content="telephone=no">
+<style>
+:root{
+  --bg:#F3F5F0; --card:#FFFFFF; --card2:#F7F9F4; --line:#E1E6DB; --line2:#C9D2C0;
+  --ink:#18201A; --ink2:#4A5548; --ink3:#7C8778;
+  --acc:#1C5A44; --acc2:#2E7A5E; --accbg:#E6F0EA;
+  --g:#2E8B57; --y:#D49A12; --r:#C2412F; --n:#9AA596;
+  --gbg:#E7F4EC; --ybg:#FBF3DE; --rbg:#FBE9E5;
+  --shadow:0 1px 2px rgba(20,30,20,.06),0 6px 20px -12px rgba(20,30,20,.25);
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --font:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0F1411; --card:#171E1A; --card2:#1D2520; --line:#26302A; --line2:#36423B;
+    --ink:#E6ECE5; --ink2:#B4BFB2; --ink3:#828E80;
+    --acc:#4FB38C; --acc2:#6BC9A2; --accbg:#1C2E26;
+    --g:#4FBF7F; --y:#E8B33A; --r:#E46A55; --n:#6F7A6D;
+    --gbg:#18301F; --ybg:#33290F; --rbg:#3A1C17;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -14px rgba(0,0,0,.7);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5}
+body{min-height:100vh;min-height:100dvh;overscroll-behavior-y:none}
+button{font-family:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums;font-family:var(--font)}
+.screen{display:none;min-height:100vh;min-height:100dvh}
+body.m-cover #cover,body.m-wizard #wizard,body.m-result #result{display:block}
+.wrap{max-width:640px;margin:0 auto}
+
+/* ── 상단 바 ── */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  -webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);
+  padding:calc(var(--sat) + 8px) 12px 8px;border-bottom:1px solid var(--line)}
+.topbar .row{display:flex;align-items:center;gap:8px;max-width:640px;margin:0 auto}
+.topbar h1{flex:1;font-size:16px;font-weight:700;margin:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ibtn{min-width:44px;height:40px;border:0;background:none;font-size:15px;color:var(--acc);font-weight:600;padding:0 8px;border-radius:10px;cursor:pointer}
+.ibtn:active{background:var(--accbg)}
+.prog{height:4px;background:var(--line);border-radius:4px;margin:8px auto 0;max-width:640px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--acc);border-radius:4px;transition:width .3s}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;max-width:640px;margin:8px auto 0;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;font-size:12px;padding:5px 11px;border-radius:20px;border:1px solid var(--line2);background:var(--card);color:var(--ink3);cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.chip.done{color:var(--acc);border-color:var(--acc)}
+
+/* ── 본문 ── */
+main.body{padding:14px 14px calc(96px + var(--sab))}
+.lead{margin:2px 2px 14px;font-size:13.5px;color:var(--ink2);line-height:1.65;word-break:keep-all}
+h2.st{font-size:22px;margin:6px 2px 4px;letter-spacing:-.02em}
+.card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:14px 16px;margin-bottom:12px}
+.card>h3{margin:0 0 10px;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card>h3 small{font-weight:400;font-size:12px;color:var(--ink3)}
+.sec{font-size:12px;font-weight:700;color:var(--acc);letter-spacing:.04em;margin:14px 0 6px}
+.sec:first-child{margin-top:0}
+.note{font-size:12.5px;color:var(--ink3);line-height:1.6;word-break:keep-all;margin:6px 0 0}
+.info{background:var(--accbg);color:var(--ink2);border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;word-break:keep-all;margin:8px 0}
+.info b{color:var(--ink)}
+
+/* ── 입력 ── */
+.fld{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.fld:last-child{border-bottom:0}
+.fld .lb{flex:1;font-size:14.5px;line-height:1.35;word-break:keep-all}
+.fld .lb small{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px}
+.ib{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+.ib input,.ib select{width:118px;height:42px;border:1.5px solid var(--line2);border-radius:10px;background:var(--card2);
+  color:var(--ink);font-size:16px;text-align:right;padding:0 10px;font-family:var(--font);font-variant-numeric:tabular-nums;-webkit-appearance:none;appearance:none}
+.ib select{width:auto;max-width:190px;text-align:left;padding-right:28px;font-size:15px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 18px,calc(100% - 10px) 18px;background-size:5px 5px;background-repeat:no-repeat}
+.ib input:focus,.ib select:focus{outline:none;border-color:var(--acc);background:var(--card)}
+.ib em{font-style:normal;font-size:13px;color:var(--ink3);min-width:26px}
+.fld.err input,.fld.err select{border-color:var(--r);background:var(--rbg)}
+.fld .emsg{display:block;color:var(--r);font-size:11.5px;margin-top:3px}
+.seg{display:flex;background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:3px;gap:3px;margin:4px 0}
+.seg button{flex:1;min-height:38px;border:0;background:none;border-radius:8px;font-size:14px;color:var(--ink2);cursor:pointer;padding:4px 6px;word-break:keep-all}
+.seg button.on{background:var(--card);color:var(--acc);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.fseg{padding:10px 0;border-bottom:1px solid var(--line)}
+.fseg:last-child{border-bottom:0}
+.fseg .lb{font-size:14.5px;margin-bottom:4px;display:block}
+.fseg .lb small{font-size:11.5px;color:var(--ink3);margin-left:6px}
+.sub{border:1px solid var(--line);border-radius:14px;padding:4px 12px;margin:10px 0;background:var(--card2)}
+.sub .hd{display:flex;justify-content:space-between;align-items:center;padding:8px 0 4px;font-weight:700;font-size:14px}
+.sub .fld{border-bottom-color:var(--line)}
+.sub .ib input,.sub .ib select{background:var(--card)}
+.tbtn{border:1px dashed var(--acc);color:var(--acc);background:none;border-radius:12px;width:100%;min-height:46px;font-size:14.5px;font-weight:600;cursor:pointer;margin:6px 0}
+.dbtn{border:0;background:none;color:var(--r);font-size:13px;cursor:pointer;padding:6px}
+
+/* ── 하단 버튼 ── */
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:10px 14px calc(10px + var(--sab))}
+.bottom .row{display:flex;gap:10px;max-width:640px;margin:0 auto}
+.btn{flex:1;min-height:50px;border-radius:14px;border:1px solid var(--line2);background:var(--card);font-size:16px;font-weight:600;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;flex:2}
+.btn:active{transform:scale(.98)}
+
+/* ── 커버 ── */
+#cover .in{padding:calc(var(--sat) + 40px) 22px calc(30px + var(--sab));max-width:520px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+.logo{width:64px;height:64px;border-radius:18px;background:var(--acc);display:grid;place-items:center;margin-bottom:22px}
+#cover h1{font-size:30px;line-height:1.25;margin:0 0 12px;letter-spacing:-.03em}
+#cover p{color:var(--ink2);font-size:15px;line-height:1.75;margin:0 0 18px;word-break:keep-all}
+.feat{list-style:none;padding:0;margin:0 0 24px;display:grid;gap:10px}
+.feat li{background:var(--card);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);font-size:14px;display:flex;gap:10px;align-items:flex-start;word-break:keep-all}
+.feat li b{display:block}
+.feat li span{color:var(--ink3);font-size:12.5px}
+.feat .dot{flex:0 0 10px;height:10px;border-radius:50%;margin-top:6px}
+.cv-btns{margin-top:auto;display:grid;gap:10px}
+.install{font-size:12.5px;color:var(--ink2);background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:12px;line-height:1.6;display:none;word-break:keep-all}
+.foot{font-size:11.5px;color:var(--ink3);text-align:center;margin-top:14px;line-height:1.6}
+
+/* ── 결과 ── */
+.hero{border-radius:20px;padding:18px;margin-bottom:12px;color:#fff;background:linear-gradient(150deg,var(--acc),#123D2E)}
+.hero.y{background:linear-gradient(150deg,#B9810A,#7A5306)}
+.hero.r{background:linear-gradient(150deg,#B23A28,#7A2116)}
+.hero .tag{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:20px;padding:4px 10px;font-size:12.5px;font-weight:600}
+.hero h2{font-size:21px;line-height:1.4;margin:12px 0 14px;letter-spacing:-.02em;word-break:keep-all}
+.hero .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hero .kp div{background:rgba(255,255,255,.13);border-radius:12px;padding:9px 10px}
+.hero .kp b{display:block;font-size:11px;font-weight:400;opacity:.85}
+.hero .kp span{font-size:15px;letter-spacing:-.02em;word-break:keep-all;font-weight:700;font-variant-numeric:tabular-nums}
+.hero .kp small{display:block;font-size:10.5px;opacity:.8}
+.light{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.light:last-child{border-bottom:0}
+.lamp{flex:0 0 14px;height:14px;border-radius:50%;margin-top:4px;box-shadow:0 0 0 4px var(--gbg);background:var(--g)}
+.lamp.y{background:var(--y);box-shadow:0 0 0 4px var(--ybg)} .lamp.r{background:var(--r);box-shadow:0 0 0 4px var(--rbg)}
+.lamp.n{background:var(--n);box-shadow:0 0 0 4px var(--line)}
+.light .tx{flex:1;min-width:0}
+.light .t{display:flex;justify-content:space-between;gap:8px;font-weight:700;font-size:14.5px}
+.light .t span{font-variant-numeric:tabular-nums;white-space:nowrap}
+.light .t span.g{color:var(--g)} .light .t span.y{color:var(--y)} .light .t span.r{color:var(--r)}
+.light p{margin:3px 0 0;font-size:12.5px;color:var(--ink2);line-height:1.6;word-break:keep-all}
+.light .tip{margin-top:6px;font-size:12.5px;background:var(--card2);border-radius:10px;padding:8px 10px;color:var(--ink);line-height:1.6;word-break:keep-all}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv span:first-child{color:var(--ink2)}
+.kv span:last-child{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+.kv.tot{border-top:1.5px solid var(--ink);border-bottom:0;margin-top:2px}
+.kv.ind span:first-child{padding-left:12px;color:var(--ink3)}
+.stack{display:flex;height:16px;border-radius:8px;overflow:hidden;margin:6px 0 10px;background:var(--line)}
+.stack i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+svg.chart{display:block;width:100%;height:auto}
+.tblw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px}
+table.t{border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px}
+table.t th{position:sticky;top:0;background:var(--card);font-weight:600;color:var(--ink3);font-size:11px;text-align:right;padding:7px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
+table.t td{text-align:right;padding:8px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+table.t th:first-child,table.t td:first-child{text-align:left;position:sticky;left:0;background:var(--card);z-index:1}
+table.t tr.post td{background:color-mix(in srgb,var(--card2) 70%,var(--card))}
+table.t tr.post td:first-child{background:var(--card2)}
+table.t tr.ev td:first-child{box-shadow:inset 3px 0 0 var(--y)}
+table.t tr.neg td.f{color:var(--r)}
+table.t tr.det td{white-space:normal;text-align:left;background:var(--card2);font-size:12.5px}
+table.t tr.det td{position:static}
+table.t tr.det .dw{position:sticky;left:0;width:min(560px,calc(100vw - 72px))}
+.pos{color:var(--g)} .neg{color:var(--r)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--card) 92%,transparent);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:4px 4px calc(4px + var(--sab))}
+.tabbar .row{display:flex;max-width:640px;margin:0 auto}
+.tabbar button{flex:1;border:0;background:none;padding:6px 0 4px;font-size:11px;color:var(--ink3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:50px}
+.tabbar button svg{width:23px;height:23px}
+.tabbar button.on{color:var(--acc);font-weight:700}
+.pane{display:none} .pane.on{display:block}
+.slider{padding:12px 0;border-bottom:1px solid var(--line)}
+.slider:last-child{border-bottom:0}
+.slider .t{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px}
+.slider .t b{color:var(--acc);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:30px;accent-color:var(--acc)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.cmp div{border-radius:12px;padding:10px 12px;background:var(--card2)}
+.cmp div.after{background:var(--accbg)}
+.cmp b{display:block;font-size:11.5px;color:var(--ink3);font-weight:400}
+.cmp span{font-size:15px;font-weight:700;display:block;margin-top:2px;font-variant-numeric:tabular-nums}
+.cmp small{display:block;font-size:12px;color:var(--ink2)}
+
+/* ── 시트 · 토스트 ── */
+#sheet{position:fixed;inset:0;z-index:50;display:none}
+#sheet.on{display:block}
+#sheet .bg{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+#sheet .pn{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:20px 20px 0 0;padding:10px 12px calc(16px + var(--sab));max-width:640px;margin:0 auto}
+#sheet .pn button{display:block;width:100%;text-align:left;border:0;background:none;padding:15px 12px;font-size:16px;border-bottom:1px solid var(--line);cursor:pointer}
+#sheet .pn button:last-child{border-bottom:0}
+#sheet .pn button.dg{color:var(--r)}
+#sheet .grab{width:40px;height:5px;border-radius:3px;background:var(--line2);margin:0 auto 8px}
+#toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));transform:translateX(-50%) translateY(20px);opacity:0;z-index:60;
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:13.5px;transition:all .25s;pointer-events:none;max-width:90vw;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (min-width:700px){
+  main.body{padding-top:20px}
+  .ib input{width:140px}
+}
+@media print{
+  @page{size:A4;margin:12mm}
+  body{background:#fff;color:#111}
+  .topbar,.tabbar,.bottom,#sheet,#toast,.noprint{display:none!important}
+  .pane{display:block!important;break-inside:avoid-page}
+  .card{box-shadow:none;border:1px solid #ddd;break-inside:avoid}
+  .hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  main.body{padding:0}
+  .tblw{overflow:visible} table.t{min-width:0;font-size:9.5px}
+  table.t th,table.t td{position:static!important}
+}
+</style>
+</head>
+<body class="m-cover">
+<noscript><p style="padding:20px">이 계산기는 JavaScript가 켜져 있어야 동작합니다.</p></noscript>
+
+<section id="cover" class="screen">
+  <div class="in">
+    <div class="logo"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/></svg></div>
+    <h1>노후 준비 계산기</h1>
+    <p>지금 소득과 지출, 연금을 넣으면 은퇴할 때 모일 돈과 은퇴 후 몇 살까지 버틸 수 있는지 보여 드립니다. 직장인·공무원·사업자·프리랜서 모두 쓸 수 있어요.</p>
+    <ul class="feat">
+      <li><i class="dot" style="background:var(--g)"></i><div><b>신호등 진단</b><span>준비율, 자산 고갈 나이, 소득 공백, 3층 연금을 한눈에</span></div></li>
+      <li><i class="dot" style="background:var(--y)"></i><div><b>간편 5분 · 상세 모드</b><span>처음엔 간편하게, 필요하면 상세로 바꿔 정밀하게</span></div></li>
+      <li><i class="dot" style="background:var(--acc)"></i><div><b>내 폰에만 저장</b><span>입력값은 서버로 보내지 않고 이 기기에만 저장돼요</span></div></li>
+    </ul>
+    <div class="cv-btns">
+      <div class="install" id="installTip"></div>
+      <button class="btn" id="btnInstall" style="display:none">홈 화면에 앱 설치</button>
+      <button class="btn pri" id="btnStart">시작하기</button>
+      <button class="btn" id="btnResume" style="display:none">이어서 하기</button>
+      <button class="btn" id="btnSeeResult" style="display:none">지난 결과 보기</button>
+    </div>
+    <div class="foot">입력 가정에 따른 추정치이며 투자·세무 판단의 단독 근거가 아닙니다.<br><span id="verTxt"></span></div>
+  </div>
+</section>
+
+<section id="wizard" class="screen">
+  <header class="topbar">
+    <div class="row">
+      <button class="ibtn" id="wzBack" aria-label="이전">‹ 이전</button>
+      <h1 id="wzTitle">기본 정보</h1>
+      <button class="ibtn" id="wzMode">간편</button>
+    </div>
+    <div class="prog"><i id="wzProg" style="width:10%"></i></div>
+    <div class="chips" id="wzChips"></div>
+  </header>
+  <main class="body wrap" id="stepBody"></main>
+  <div class="bottom"><div class="row">
+    <button class="btn" id="btnPrev">이전</button>
+    <button class="btn pri" id="btnNext">다음</button>
+  </div></div>
+</section>
+
+<section id="result" class="screen">
+  <header class="topbar">
+    <div class="row">
+      <button class="ibtn" id="rsEdit">수정</button>
+      <h1>진단 결과</h1>
+      <button class="ibtn" id="rsMenu" aria-label="메뉴">•••</button>
+    </div>
+  </header>
+  <main class="body wrap" id="resBody"></main>
+  <nav class="tabbar"><div class="row" id="tabRow"></div></nav>
+</section>
+
+<div id="sheet"><div class="bg" data-close></div><div class="pn">
+  <div class="grab"></div>
+  <button data-act="print">PDF로 저장 · 인쇄</button>
+  <button data-act="export">입력값 백업 파일 저장</button>
+  <button data-act="import">백업 파일 불러오기</button>
+  <button data-act="reset" class="dg">처음부터 다시 (입력값 삭제)</button>
+  <button data-close>닫기</button>
+</div></div>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+<div id="toast"></div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
