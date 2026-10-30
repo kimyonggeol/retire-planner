@@ -15,7 +15,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 /* ───────────── 기본 입력값 ───────────── */
 function newSrc(type){
   const amt = {salary:4500, biz:4000, free:4000, daily:15, etc:1200}[type||"salary"];
-  return {type:type||"salary", amt, raise:3, bonIn:0, bonEx:0, startY:"", endY:"",
+  return {type:type||"salary", amt, raise:3, bonMode:"amount", bonIn:0, bonEx:0, bonInPct:0, bonExPct:0, startY:"", endY:"",
     promoMode:"avg", promoN:0, promoY:Y0+3, promoCycle:5, promoUp:500, promoList:[],
     freeExp:30, days:20, months:11, etcKind:"biz"};
 }
@@ -228,7 +228,11 @@ function compute(st, ov){
         for(let k=0;k<n;k++){const py=num(c.promoY)+k*Math.max(1,num(c.promoCycle));
           if(py>Y0&&py<=Y) base+=W(c.promoUp)*Math.pow(1+gr,Y-py);}
       }
-      z.wage=base; z.mWage=base/12; z.bonIn=W(c.bonIn)*gf; z.bonEx=W(c.bonEx)*gf;
+      z.wage=base; z.mWage=base/12;
+      /* 성과급: 고정 금액(연봉 인상률만큼 증가) · 월급 대비 %(그해 월급 기준) · 혼합 */
+      const bm=c.bonMode||"amount", useA=bm!=="pct", useP=bm!=="amount";
+      z.bonIn=(useA?W(c.bonIn)*gf:0)+(useP?z.mWage*num(c.bonInPct)/100:0);
+      z.bonEx=(useA?W(c.bonEx)*gf:0)+(useP?z.mWage*num(c.bonExPct)/100:0);
     } else if(c.type==="biz"){ z.biz=W(c.amt)*gf; }
     else if(c.type==="free"){ z.biz=W(c.amt)*gf*(1-clamp(num(c.freeExp),0,95)/100); }
     else if(c.type==="daily"){
@@ -367,7 +371,7 @@ function compute(st, ov){
     } else if(sv.type==="dc"){
       o.yrs=Math.max(0,P.retireY-Math.max(num(sv.hireY),P.fut?P.fStart:-1e9));
       let pot=W(sv.open); const rr=num(sv.dcRate)/100, pc=num(sv.dcPct)/100;
-      for(let Y=Y0;Y<P.retireY&&Y<=lastY;Y++){const r=pre[Y].pr[i]; pot=pot*(1+rr)+(r.wage+r.bonIn+r.bonEx)*pc;}
+      for(let Y=Y0;Y<P.retireY&&Y<=lastY;Y++){const r=pre[Y].pr[i]; pot=pot*(1+rr)+(r.wage+r.bonIn)*pc;}
       o.gross=pot;
     }
     if(o.yrs<1&&o.gross>0) o.yrs=1;

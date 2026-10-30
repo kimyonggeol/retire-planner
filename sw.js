@@ -1,5 +1,5 @@
 /* 오프라인 캐시 — 파일을 고치면 VERSION을 올려 주세요 */
-const VERSION = "rp-1.1.0";
+const VERSION = "rp-1.2.0";
 const FILES = ["./", "./index.html", "./engine.js", "./app.js", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 self.addEventListener("install", e => {

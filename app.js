@@ -1,7 +1,7 @@
 /* 노후 준비 계산기 — 화면 · 입력 · 저장 */
 "use strict";
 (function(){
-const APP_VER="1.1.0";
+const APP_VER="1.2.0";
 const E=window.Engine, Y0=E.Y0, eok=E.eok;
 const KEY="retire-planner:v1";
 const $=id=>document.getElementById(id);
@@ -92,8 +92,9 @@ const TIP={
   infl:"물가가 매년 오르는 비율입니다. 한국은행 목표치인 2%를 많이 씁니다.",
   ret:"모아 둔 금융자산 전체가 1년에 불어나는 평균 비율입니다. 예금·적금 위주면 2~3%, 주식·펀드를 섞으면 4~5%. 높게 잡을수록 결과가 좋아 보이니 보수적으로 넣으세요.",
   raise:"해마다 오르는 연봉 비율(물가 인상 + 호봉)입니다. 상세 모드에서 승진을 따로 넣는다면 승진으로 크게 오르는 부분은 빼고 넣어야 중복되지 않습니다.",
-  bonIn:"매년 정해진 때 나오는 정기상여(예: 기본급의 400%, 명절 상여)입니다. 퇴직금 평균임금에 들어갑니다.",
-  bonEx:"회사 실적에 따라 달라지는 경영성과급·PS·인센티브입니다. 퇴직금 계산에는 들어가지 않습니다.",
+  bonMode:"<b>고정 금액</b>: 매년 정해진 금액(예: 연 500만원)<br><b>월급의 %</b>: 월급(기본 연봉 ÷ 12)에 비율을 곱한 금액. 연봉이 오르면 성과급도 함께 오릅니다.<br><b>혼합</b>: 고정 금액 + 비율을 함께 받는 경우<br>①은 퇴직금 평균임금에 들어가는 상여, ②는 들어가지 않는 성과급으로 나눠 넣으세요.",
+  bonIn:"정기상여처럼 퇴직금 평균임금에 들어가는 상여입니다. 1년에 받는 비율을 모두 더해 넣으세요. 예: 월급의 100% → 100",
+  bonEx:"경영성과급·PS처럼 퇴직금 계산에 들어가지 않는 성과급입니다. 1년 합계 비율을 넣으세요. 예: 월급의 600% → 600",
   promo:"<b>평균으로 입력</b>: 승진 횟수·주기와 1회당 평균 상승액을 넣습니다.<br><b>승진별로 입력</b>: 대리→과장 500만, 과장→차장 800만처럼 연도와 금액을 하나씩 넣습니다.<br>금액은 승진으로 오르는 <b>연봉 차이</b>(올해 가치)입니다.",
   freeExp:"총수입 중 일 때문에 쓴 비용(장비·재료·교통 등)의 비율입니다. 장부를 안 쓰면 업종별 경비율(대략 20~60%)이 적용되니 종합소득세 신고서의 '필요경비'를 참고하세요.",
   etcKind:"월세·상가 임대수입은 '사업소득', 강연료·원고료 같은 일회성 수입은 '기타소득', 이미 세금을 뗀 돈이나 비과세 수당은 '비과세'를 고르세요.",
@@ -178,17 +179,31 @@ function rProfile(){
   return h;
 }
 
+/* 상여·성과급: 고정 금액 / 월급 대비 % / 혼합 */
+function bonusBlock(p,c){
+  const m=c.bonMode||"amount", mw=(+c.amt||0)/12;
+  let h=`<div class="sec">상여 · 성과급</div>`+SEG(p+".bonMode","지급 방식",[["amount","고정 금액"],["pct","월급의 %"],["mix","혼합"]],{i:TIP.bonMode});
+  const grp=(t,kA,kP,tip)=>{
+    let g=`<div class="sub"><div class="hd"><span>${t}</span></div>`;
+    if(m!=="pct") g+=F(p+"."+kA,"연간 금액",{unit:"만원",hint:"올해 기준 · 연봉 인상률만큼 증가",r:1});
+    if(m!=="amount") g+=F(p+"."+kP,"월급 대비 (연간 합계)",{unit:"%",dec:1,hint:"예: 600 = 월급 6개월치",r:1,i:tip});
+    const v=(m!=="pct"?(+c[kA]||0):0)+(m!=="amount"?mw*(+c[kP]||0)/100:0);
+    return g+`<p class="note" style="margin:2px 0 8px">올해 기준 연 <b>${Math.round(v).toLocaleString()}만원</b>${m!=="amount"?" · 월급 "+Math.round(mw).toLocaleString()+"만원 기준":""}</p></div>`;
+  };
+  h+=grp("① 퇴직금에 반영되는 상여","bonIn","bonInPct",TIP.bonIn);
+  h+=grp("② 퇴직금에 반영 안 되는 성과급","bonEx","bonExPct",TIP.bonEx);
+  return h;
+}
 function srcCard(K,i){
   const c=st[K].src[i], p=K+".src."+i, simple=!adv();
   let h=`<div class="sub"><div class="hd"><span>소득 ${i+1}</span>${i>0?`<button class="dbtn" data-del="${K}.src" data-i="${i}">삭제</button>`:""}</div>`;
   if(adv()||i>0) h+=SEL(p+".type","소득 종류",SRC_T);
   const gr=c.type==="salary"?"연 인상률":"연 증가율";
   if(c.type==="salary"){
-    h+=F(p+".amt",simple?"세전 연봉":"세전 기본 연봉",{unit:"만원",hint:simple?"상여·성과급 포함 총액":"상여·성과급 제외"});
+    h+=F(p+".amt","세전 기본 연봉",{unit:"만원",hint:"상여·성과급 제외 · 월급 × 12"});
     h+=F(p+".raise",gr,{unit:"%",dec:1,hint:"승진 제외 · 호봉·물가 인상",i:TIP.raise});
+    h+=bonusBlock(p,c);
     if(adv()){
-      h+=F(p+".bonIn","정기 상여 (연)",{unit:"만원",hint:"퇴직금 평균임금에 포함",i:TIP.bonIn});
-      h+=F(p+".bonEx","성과급 (연)",{unit:"만원",hint:"퇴직금 미반영",i:TIP.bonEx});
       h+=`<div class="sec">승진</div>`+SEG(p+".promoMode","입력 방식",[["avg","평균으로 입력"],["each","승진별로 입력"]],{i:TIP.promo});
       if(c.promoMode==="each"){
         (c.promoList||[]).forEach((pm,j)=>{ const q=p+".promoList."+j;
