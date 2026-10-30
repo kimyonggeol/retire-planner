@@ -16,7 +16,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function newSrc(type){
   const amt = {salary:4500, biz:4000, free:4000, daily:15, etc:1200}[type||"salary"];
   return {type:type||"salary", amt, raise:3, bonIn:0, bonEx:0, startY:"", endY:"",
-    promoN:0, promoY:Y0+3, promoCycle:5, promoUp:500,
+    promoMode:"avg", promoN:0, promoY:Y0+3, promoCycle:5, promoUp:500, promoList:[],
     freeExp:30, days:20, months:11, etcKind:"biz"};
 }
 function newPerson(by, job){
@@ -24,9 +24,10 @@ function newPerson(by, job){
     birthY:by, retireAge:60, job:job||"corp",
     src:[newSrc(srcTypeOf(job||"corp"))],
     pen:{mode:"auto", manual:120, pastM:0, pastInc:300, startAge:"", pubStartY:Y0-5},
-    sev:{type:sevTypeOf(job||"corp"), hireY:Y0-5, open:0, dcRate:4, dcPct:8.33, recv:"lump", years:10},
+    sev:{type:sevTypeOf(job||"corp"), hireY:Y0-5, open:0, dcRate:4, dcPct:8.33, recv:"lump", years:10, dbMode:"legal", a:2, b:2, bSign:"-"},
     pps:{save:0, open:0, age:60, years:20},
-    side:{amt:0, endAge:70}
+    side:{amt:0, endAge:70},
+    future:{use:false, job:"corp", startY:Y0+3, endY:Y0+20}
   };
 }
 function srcTypeOf(job){ return {corp:"salary",public:"salary",military:"salary",biz:"biz",free:"free",daily:"daily"}[job]||"salary"; }
@@ -55,8 +56,8 @@ function defaults(){
     kidCost:{e0:20,e1:40,e2:60,e3:80,e4:700,a1:5,a2:15,a3:30,a4:50,inf:3,support:0},
     endAge:95, eco:{infl:2, ret:3, wg:3.4},
     fin:5000, house:{has:false, value:50000, g:2}, loans:[],
-    exp:{month:300, g:2.5, fHousing:35,fIns:40,fComm:20,fCar:30,fEtc:0,fixG:2,
-         vFood:90,vFun:40,vMed:15,varG:3,misc:500,miscG:2},
+    exp:{month:300, g:2.5, fHousing:35,fIns:40,fComm:20,fCar:30,fPocket:60,fEtc:0,fixG:2,
+         vFood:70,vFun:20,vShop:30,vDaily:20,vMed:10,vEtc:10,varG:3,travel:300,misc:200,miscG:2},
     post:{exp:250, dropAge:80, dropPct:80, med:300, hiAuto:true},
     hp:{use:false, age:65, mode:"auto", manual:100},
     tax:{dedOther:300, crOther:50}
@@ -98,6 +99,12 @@ function retireTax(gross,yrs){          // 퇴직소득세
   let cd; if(cv<=8e6)cd=cv; else if(cv<=70e6)cd=8e6+(cv-8e6)*.6;
   else if(cv<=1e8)cd=45.2e6+(cv-70e6)*.55; else if(cv<=3e8)cd=61.7e6+(cv-1e8)*.45; else cd=151.7e6+(cv-3e8)*.35;
   return progressive(Math.max(0,cv-cd))/12*ys*1.1;
+}
+/* DB 지급 개월수: 법정(근속 1년당 1개월) 또는 회사 규정 a×n±b — 법정보다 적으면 법정 */
+function dbMonths(sv,yrs){
+  if(sv.dbMode!=="custom") return yrs;
+  const b=num(sv.b)*(sv.bSign==="+"?1:-1);
+  return Math.max(yrs,num(sv.a)*yrs+b);
 }
 function ppsTaxRate(age){ return age>=80?0.033:age>=70?0.044:0.055; }
 
@@ -190,10 +197,13 @@ function compute(st, ov){
   const inflF=Y=>Math.pow(1+infl,Y-Y0), wgF=Y=>Math.pow(1+wg,Y-Y0);
 
   const mk=(k,p)=>{
-    const ra=num(p.retireAge)+(k==="A"?(ov.retireAdd||0):0);
     const by=num(p.birthY);
-    return {k,p,birthY:by,retireAge:ra,retireY:by+ra,job:p.job,
-      pub:(p.job==="public"||p.job==="military"),mil:p.job==="military",works:p.job!=="none"};
+    const fut=p.job==="none"&&p.future&&p.future.use;          // 지금은 쉬지만 나중에 일할 계획
+    const job=fut?p.future.job:p.job;
+    let ra=num(p.retireAge)+(k==="A"?(ov.retireAdd||0):0);
+    if(fut) ra=num(p.future.endY)+1-by;
+    return {k,p,birthY:by,retireAge:ra,retireY:by+ra,job,fut,fStart:fut?num(p.future.startY):Y0,
+      pub:(job==="public"||job==="military"),mil:job==="military",works:job!=="none"};
   };
   const people=[mk("A",st.A)];
   if(st.hasSpouse) people.push(mk("B",st.B));
@@ -205,15 +215,19 @@ function compute(st, ov){
   function srcYear(c,Y,P){
     const z={wage:0,bonIn:0,bonEx:0,mWage:0,biz:0,other:0,nontax:0,daily:0,dIns:0,dayList:[]};
     if(!P.works) return z;
-    const sy=c.startY!==""&&c.startY!=null?num(c.startY):Y0;
+    const sy=c.startY!==""&&c.startY!=null?num(c.startY):P.fStart;
     const ey=c.endY!==""&&c.endY!=null?num(c.endY):P.retireY-1;
     if(Y<sy||Y>ey) return z;
     const t=Y-Y0, gr=num(c.raise)/100, gf=Math.pow(1+gr,t);
     if(c.type==="salary"){
       let base=W(c.amt)*gf;
-      const n=num(c.promoN);
-      for(let k=0;k<n;k++){const py=num(c.promoY)+k*Math.max(1,num(c.promoCycle));
-        if(py>Y0&&py<=Y) base+=W(c.promoUp)*Math.pow(1+gr,Y-py);}
+      if(c.promoMode==="each"&&Array.isArray(c.promoList)){
+        c.promoList.forEach(pm=>{const py=num(pm.y); if(py>Y0&&py<=Y) base+=W(pm.up)*Math.pow(1+gr,Y-py);});
+      } else {
+        const n=num(c.promoN);
+        for(let k=0;k<n;k++){const py=num(c.promoY)+k*Math.max(1,num(c.promoCycle));
+          if(py>Y0&&py<=Y) base+=W(c.promoUp)*Math.pow(1+gr,Y-py);}
+      }
       z.wage=base; z.mWage=base/12; z.bonIn=W(c.bonIn)*gf; z.bonEx=W(c.bonEx)*gf;
     } else if(c.type==="biz"){ z.biz=W(c.amt)*gf; }
     else if(c.type==="free"){ z.biz=W(c.amt)*gf*(1-clamp(num(c.freeExp),0,95)/100); }
@@ -303,7 +317,7 @@ function compute(st, ov){
     return {kind:"nps",manual:false,eligible,payAge,payY,normal,adj,P:Pm,B:Bv,A0,base,annualAtPay};
   }
   function pubCalc(P,idx){
-    const pen=P.p.pen, startY=num(pen.pubStartY);
+    const pen=P.p.pen, startY=P.fut?Math.max(num(pen.pubStartY),P.fStart):num(pen.pubStartY);
     const yrs=Math.max(0,P.retireY-startY), capY=P.mil?33:36, used=Math.min(yrs,capY);
     const minY=P.mil?20:10;
     const payAge=P.mil?P.retireAge:(num(pen.startAge)>0?num(pen.startAge):65);
@@ -345,12 +359,13 @@ function compute(st, ov){
     if(P.pub){
       o.type="pub"; const pc=pens[i].pub; o.yrs=pc.yrs; o.gross=pc.sevGross||0;
     } else if(sv.type==="db"){
-      o.yrs=Math.max(0,P.retireY-num(sv.hireY));
+      o.yrs=Math.max(0,P.retireY-Math.max(num(sv.hireY),P.fut?P.fStart:-1e9));
       const r=pre[Math.min(P.retireY-1,lastY)].pr[i];
       o.avg=(r.mWage||((r.wage)/12))+r.bonIn/12;
-      o.gross=o.avg*o.yrs;
+      o.months=dbMonths(sv,o.yrs);
+      o.gross=o.avg*o.months;
     } else if(sv.type==="dc"){
-      o.yrs=Math.max(0,P.retireY-num(sv.hireY));
+      o.yrs=Math.max(0,P.retireY-Math.max(num(sv.hireY),P.fut?P.fStart:-1e9));
       let pot=W(sv.open); const rr=num(sv.dcRate)/100, pc=num(sv.dcPct)/100;
       for(let Y=Y0;Y<P.retireY&&Y<=lastY;Y++){const r=pre[Y].pr[i]; pot=pot*(1+rr)+(r.wage+r.bonIn+r.bonEx)*pc;}
       o.gross=pot;
@@ -415,11 +430,11 @@ function compute(st, ov){
       const wageInc=r.wageT>0?r.wageT-earnedDed(r.wageT):0;
       let base=wageInc+r.biz+r.other*0.4;
       if(base<=0) return t2;
-      base-=1.5e6*(1+deps); base-=o.soc; if(main) base-=W(st.tax.dedOther);
+      base-=1.5e6*(1+deps); base-=o.soc;
       base=Math.max(0,base);
       const calc=progressive(base);
       let cr=0; if(r.wageT>0) cr+=wageCredit(calc,r.wageT); else cr+=7e4;
-      if(main) cr+=childCredit(kidsCr)+W(st.tax.crOther);
+      if(main) cr+=childCredit(kidsCr);
       if(Y<P.retireY) cr+=ppsCredit(W(P.p.pps.save),r.gross);
       return t2+Math.max(0,calc-cr)*1.1;
     };
@@ -505,9 +520,9 @@ function compute(st, ov){
     if(phasePre){
       if(simple) living=W(ex.month)*12*Math.pow(1+num(ex.g)/100,t);
       else{
-        living=(W(ex.fHousing)+W(ex.fIns)+W(ex.fComm)+W(ex.fCar)+W(ex.fEtc))*12*Math.pow(1+num(ex.fixG)/100,t)
-              +(W(ex.vFood)+W(ex.vFun)+W(ex.vMed))*12*Math.pow(1+num(ex.varG)/100,t)
-              +W(ex.misc)*Math.pow(1+num(ex.miscG)/100,t);
+        living=(W(ex.fHousing)+W(ex.fIns)+W(ex.fComm)+W(ex.fCar)+W(ex.fPocket)+W(ex.fEtc))*12*Math.pow(1+num(ex.fixG)/100,t)
+              +(W(ex.vFood)+W(ex.vFun)+W(ex.vShop)+W(ex.vDaily)+W(ex.vMed)+W(ex.vEtc))*12*Math.pow(1+num(ex.varG)/100,t)
+              +(W(ex.travel)+W(ex.misc))*Math.pow(1+num(ex.miscG)/100,t);
       }
       living=Math.max(0,living-W(ov.save||0)*12*inflF(Y));
     } else {
@@ -637,6 +652,6 @@ function eok(v){
   return sign+am.toLocaleString()+"만";
 }
 
-const API={Y0,M0,defaults,newSrc,newPerson,newLoan,LOAN_PRESET,srcTypeOf,sevTypeOf,compute,eok,npsNormalAge,hpFactor};
+const API={dbMonths,Y0,M0,defaults,newSrc,newPerson,newLoan,LOAN_PRESET,srcTypeOf,sevTypeOf,compute,eok,npsNormalAge,hpFactor};
 if(typeof module!=="undefined"&&module.exports) module.exports=API; else root.Engine=API;
 })(typeof window!=="undefined"?window:this);
