@@ -1,7 +1,7 @@
 /* 노후 준비 계산기 — 화면 · 입력 · 저장 */
 "use strict";
 (function(){
-const APP_VER="1.2.0";
+const APP_VER="1.3.0";
 const E=window.Engine, Y0=E.Y0, eok=E.eok;
 const KEY="retire-planner:v1";
 const $=id=>document.getElementById(id);
@@ -293,13 +293,28 @@ function rExp(){
     h+=`<div class="info">한 달 평균 생활비 <b>${Math.round(fx+vr+an/12).toLocaleString()}만원</b> = 고정 ${fx.toLocaleString()} + 변동 ${vr.toLocaleString()} + 연간 지출 ÷ 12 (${Math.round(an/12).toLocaleString()})</div>`;
   }
   if(st.hasKids){
-    if(!adv()){
+    /* 자녀 출생 연도로 이미 지난 학령 단계는 숨김 (계산 엔진과 같은 나이 구간) */
+    const ages=st.kids.map(k=>Y0-(+k.y||Y0));
+    const ahead=end=>ages.some(a=>a<end);             // 아직 그 단계를 마치지 않은 자녀가 있으면 표시
+    const S={e0:ahead(7),s1:ahead(13),s2:ahead(16),s3:ahead(19),s4:ahead(23),sup:ahead(29)};
+    const ageTxt=ages.map((a,i)=>(ages.length>1?"자녀"+(i+1)+" ":"")+(a<0?"출생 예정":"만 "+a+"세")).join(" · ");
+    const hidden=[!S.e0&&"미취학",!S.s1&&"초등",!S.s2&&"중등",!S.s3&&"고등",!S.s4&&"대학"].filter(Boolean);
+    const hidNote=hidden.length?`<p class="note">${ageTxt} 기준이라 이미 지난 <b>${hidden.join("·")}</b> 단계는 뺐습니다.</p>`:"";
+    if(!S.s4){
+      h+=card("자녀",`<p class="note">${ageTxt} — 교육비 단계가 모두 끝나 교육비·용돈은 계산하지 않습니다.</p>`+
+        (S.sup&&adv()?F("kidCost.support","독립 지원금 (1인)",{unit:"만원",hint:"결혼·주거, 만 28세에 지출",i:TIP.support}):""));
+    } else if(!adv()){
       const lv={low:0.6,mid:1,high:1.6}[st.kidLevel]||1, kc=st.kidCost;
+      const parts=[S.e0&&"미취학 "+Math.round(kc.e0*lv)+"만", S.s1&&"초등 "+Math.round((+kc.e1+ +kc.a1)*lv)+"만",
+        S.s2&&"중등 "+Math.round((+kc.e2+ +kc.a2)*lv)+"만", S.s3&&"고등 "+Math.round((+kc.e3+ +kc.a3)*lv)+"만",
+        "대학 등록금 연 "+Math.round(kc.e4*Math.sqrt(lv))+"만 + 용돈 "+Math.round(kc.a4*lv)+"만"].filter(Boolean);
       h+=card("자녀 교육비 수준",SEG("kidLevel","",[["low","적게"],["mid","보통"],["high","많이"]])+
-        `<p class="note">1인 월 기준 · 미취학 ${Math.round(kc.e0*lv)}만, 초등 ${Math.round((+kc.e1+ +kc.a1)*lv)}만, 중등 ${Math.round((+kc.e2+ +kc.a2)*lv)}만, 고등 ${Math.round((+kc.e3+ +kc.a3)*lv)}만, 대학 등록금 연 ${Math.round(kc.e4*Math.sqrt(lv))}만 + 용돈 ${Math.round(kc.a4*lv)}만. 상세 모드에서 직접 바꿀 수 있어요.</p>`);
+        `<p class="note">1인 월 기준 · ${parts.join(", ")}. 상세 모드에서 직접 바꿀 수 있어요.</p>`+hidNote);
     } else {
-      h+=card("자녀 1인 교육비 (월)",F("kidCost.e0","미취학 (만 4~6세)",{unit:"만원"})+F("kidCost.e1","초등",{unit:"만원"})+F("kidCost.e2","중등",{unit:"만원"})+F("kidCost.e3","고등",{unit:"만원"})+F("kidCost.e4","대학 등록금 (연)",{unit:"만원"}));
-      h+=card("자녀 1인 용돈 (월)",F("kidCost.a1","초등",{unit:"만원"})+F("kidCost.a2","중등",{unit:"만원"})+F("kidCost.a3","고등",{unit:"만원"})+F("kidCost.a4","대학",{unit:"만원"})+
+      h+=card("자녀 1인 교육비 (월)",(S.e0?F("kidCost.e0","미취학 (만 4~6세)",{unit:"만원"}):"")+(S.s1?F("kidCost.e1","초등",{unit:"만원"}):"")+
+        (S.s2?F("kidCost.e2","중등",{unit:"만원"}):"")+(S.s3?F("kidCost.e3","고등",{unit:"만원"}):"")+F("kidCost.e4","대학 등록금 (연)",{unit:"만원"})+hidNote,ageTxt);
+      h+=card("자녀 1인 용돈 (월)",(S.s1?F("kidCost.a1","초등",{unit:"만원"}):"")+(S.s2?F("kidCost.a2","중등",{unit:"만원"}):"")+
+        (S.s3?F("kidCost.a3","고등",{unit:"만원"}):"")+F("kidCost.a4","대학",{unit:"만원"})+
         F("kidCost.inf","교육비 상승률",{unit:"%",dec:1})+F("kidCost.support","독립 지원금 (1인)",{unit:"만원",hint:"결혼·주거, 만 28세에 지출",i:TIP.support}));
     }
   }
