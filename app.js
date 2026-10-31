@@ -1,14 +1,14 @@
 /* 노후 준비 계산기 — 화면 · 입력 · 저장 */
 "use strict";
 (function(){
-const APP_VER="1.3.0";
+const APP_VER="1.4.0";
 const E=window.Engine, Y0=E.Y0, eok=E.eok;
 const KEY="retire-planner:v1";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ═══════════ 상태 · 저장 ═══════════ */
-let st=E.defaults(), ui={step:0,maxStep:0,tab:"diag",real:true,openRow:null,ov:{retireAdd:0,save:0,postAdd:0,retAdd:0},hasResult:false};
+let st=E.defaults(), ui={step:0,maxStep:0,tab:"diag",real:true,openRow:null,openSpend:false,ov:{retireAdd:0,save:0,postAdd:0,retAdd:0},hasResult:false};
 function merge(base,src){            // 저장본에 없는 새 항목은 기본값 유지
   if(Array.isArray(base)) return Array.isArray(src)?src:base;
   if(base&&typeof base==="object"){ const o=Object.assign({},base);
@@ -95,7 +95,7 @@ const TIP={
   bonMode:"<b>고정 금액</b>: 매년 정해진 금액(예: 연 500만원)<br><b>월급의 %</b>: 월급(기본 연봉 ÷ 12)에 비율을 곱한 금액. 연봉이 오르면 성과급도 함께 오릅니다.<br><b>혼합</b>: 고정 금액 + 비율을 함께 받는 경우<br>①은 퇴직금 평균임금에 들어가는 상여, ②는 들어가지 않는 성과급으로 나눠 넣으세요.",
   bonIn:"정기상여처럼 퇴직금 평균임금에 들어가는 상여입니다. 1년에 받는 비율을 모두 더해 넣으세요. 예: 월급의 100% → 100",
   bonEx:"경영성과급·PS처럼 퇴직금 계산에 들어가지 않는 성과급입니다. 1년 합계 비율을 넣으세요. 예: 월급의 600% → 600",
-  promo:"<b>평균으로 입력</b>: 승진 횟수·주기와 1회당 평균 상승액을 넣습니다.<br><b>승진별로 입력</b>: 대리→과장 500만, 과장→차장 800만처럼 연도와 금액을 하나씩 넣습니다.<br>금액은 승진으로 오르는 <b>연봉 차이</b>(올해 가치)입니다.",
+  promo:"<b>평균으로 입력</b>: 승진 횟수·주기와 1회당 평균 상승액을 넣습니다.<br><b>승진별로 입력</b>: 대리→과장 500만, 과장→차장 800만처럼 연도와 금액을 하나씩 넣습니다.<br>금액은 승진으로 오르는 <b>연봉 차이</b>를 지금 연봉 수준으로 넣으세요. 승진 시점까지 연 인상률만큼 함께 올려 계산합니다.",
   freeExp:"총수입 중 일 때문에 쓴 비용(장비·재료·교통 등)의 비율입니다. 장부를 안 쓰면 업종별 경비율(대략 20~60%)이 적용되니 종합소득세 신고서의 '필요경비'를 참고하세요.",
   etcKind:"월세·상가 임대수입은 '사업소득', 강연료·원고료 같은 일회성 수입은 '기타소득', 이미 세금을 뗀 돈이나 비과세 수당은 '비과세'를 고르세요.",
   srcPeriod:"비워 두면 올해부터 은퇴 전년까지로 계산합니다. 월세 수입처럼 은퇴 후에도 들어오는 소득은 종료 연도를 은퇴 이후로 넣으세요.",
@@ -104,6 +104,8 @@ const TIP={
   loanP:"처음 빌린 금액이 아니라 <b>지금 남은 원금</b>입니다. 은행 앱의 대출 조회 화면에서 '대출잔액'을 확인하세요.",
   loanTerm:"만기까지 남은 기간입니다. 30년 대출을 5년째 갚고 있다면 25를 넣으세요.",
   loanPay:"<b>원리금균등</b>: 매달 같은 금액<br><b>원금균등</b>: 원금은 같고 이자가 줄어 처음이 가장 큼<br><b>체증식</b>: 처음엔 적게, 점점 많이<br><b>만기일시</b>: 이자만 내다 만기에 원금 한 번에 (전세·신용대출)<br><b>혼합</b>: 일부만 나눠 갚고 나머지는 만기에",
+  loanRate:"<b>고정</b>: 만기까지 금리가 같음<br><b>혼합</b>: 처음 몇 년은 고정, 그 뒤 변동금리로 바뀜 (예: 주담대 5년 고정형, 신생아 특례대출처럼 특례금리 기간 뒤 일반금리로 바뀌는 상품)<br><b>변동</b>: 6개월·1년마다 금리가 바뀜 → 남은 기간 평균으로 예상해 넣으세요",
+  loanFixY:"지금부터 고정금리가 남은 기간입니다. 5년 고정 상품을 2년째 갚고 있다면 3을 넣으세요.",
   grace:"원금은 안 갚고 이자만 내는 기간 중 <b>남은 기간</b>입니다. 이미 끝났으면 0.",
   month:"관리비·보험·통신·차량·식비·쇼핑·여가·용돈에, 여행·경조사 같은 연간 지출을 12로 나눈 금액까지 더한 한 달 평균입니다. 최근 몇 달 카드값 + 현금 지출 평균으로 잡으면 쉽습니다.",
   travel:"주말 캠핑, 국내 여행, 해외 여행을 모두 여기에 넣습니다. 위 '여가'에는 여행을 넣지 마세요.",
@@ -208,12 +210,12 @@ function srcCard(K,i){
       if(c.promoMode==="each"){
         (c.promoList||[]).forEach((pm,j)=>{ const q=p+".promoList."+j;
           h+=`<div class="sub"><div class="hd"><span>승진 ${j+1}</span><button class="dbtn" data-del="${p}.promoList" data-i="${j}">삭제</button></div>`+
-            F(q+".y","승진 연도",{unit:"년"})+F(q+".up","연봉 상승액",{unit:"만원",hint:"이 승진으로 오르는 연봉"})+`</div>`; });
+            F(q+".y","승진 연도",{unit:"년"})+F(q+".up","연봉 상승액",{unit:"만원",hint:"올해 연봉 기준 금액"})+`</div>`; });
         if(!(c.promoList||[]).length) h+=`<p class="note">은퇴 전까지 예상되는 승진을 하나씩 추가하세요. 없으면 비워 두세요.</p>`;
         if((c.promoList||[]).length<8) h+=`<button class="tbtn" data-add="${p}.promoList">＋ 승진 추가</button>`;
       } else {
         h+=F(p+".promoN","남은 승진 횟수",{unit:"회",hint:"없으면 0"})+F(p+".promoY","다음 승진 연도",{unit:"년"})+
-           F(p+".promoCycle","승진 주기",{unit:"년",hint:"몇 년마다"})+F(p+".promoUp","승진 1회당 평균 연봉 상승액",{unit:"만원"});
+           F(p+".promoCycle","승진 주기",{unit:"년",hint:"몇 년마다"})+F(p+".promoUp","승진 1회당 평균 연봉 상승액",{unit:"만원",hint:"올해 연봉 기준"});
       }
     }
   } else if(c.type==="biz"){
@@ -249,11 +251,19 @@ function rIncome(K){
 function loanCard(i){
   const p="loans."+i, L=st.loans[i];
   let h=`<div class="sub"><div class="hd"><span>대출 ${i+1}</span><button class="dbtn" data-del="loans" data-i="${i}">삭제</button></div>`;
-  h+=SEL(p+".kind","종류",LOAN_K)+F(p+".P","현재 남은 원금",{unit:"만원",i:TIP.loanP})+F(p+".term","남은 기간",{unit:"년",i:TIP.loanTerm})+
-     F(p+".r1",L.rate==="variable"?"예상 평균 금리":"현재 금리",{unit:"%",dec:1})+SEL(p+".pay","상환 방식",PAY_T,{i:TIP.loanPay});
+  h+=SEL(p+".kind","종류",LOAN_K)+F(p+".P","현재 남은 원금",{unit:"만원",i:TIP.loanP,r:1})+F(p+".term","남은 기간",{unit:"년",i:TIP.loanTerm,r:1});
+  h+=SEG(p+".rate","금리 유형",[["fixed","고정"],["hybrid","혼합"],["variable","변동"]],{i:TIP.loanRate});
+  if(L.rate==="hybrid"){
+    h+=`<div class="sub">`+F(p+".fixY","고정금리 남은 기간",{unit:"년",r:1,hint:"이미 지난 기간은 빼고",i:TIP.loanFixY})+
+      F(p+".r1","고정금리",{unit:"%",dec:2,r:1})+F(p+".r2","고정기간 후 평균 예상금리",{unit:"%",dec:2,r:1,hint:"변동금리로 바뀐 뒤"})+`</div>`;
+  } else h+=F(p+".r1",L.rate==="variable"?"예상 평균 금리":"금리",{unit:"%",dec:2,r:1,hint:L.rate==="variable"?"남은 기간 평균으로 예상":""});
+  h+=SEL(p+".pay","상환 방식",PAY_T,{i:TIP.loanPay});
+  const pv=E.loanPreview(L);
+  if(pv){
+    const mm=v=>Math.round(v/1e4).toLocaleString();
+    h+=`<div class="info">월 상환액 약 <b>${mm(pv.first)}만원</b>${pv.switchPay!=null?` → 금리 전환 후 <b>${mm(pv.switchPay)}만원</b>`:""} · 남은 이자 합계 약 ${mm(pv.totalInt)}만원</div>`;
+  }
   if(adv()){
-    h+=SEL(p+".rate","금리 유형",RATE_T);
-    if(L.rate==="hybrid") h+=F(p+".fixY","남은 고정 기간",{unit:"년"})+F(p+".r2","변동 전환 후 금리",{unit:"%",dec:1});
     h+=F(p+".grace","남은 거치 기간",{unit:"년",hint:"이자만 내는 기간",i:TIP.grace});
     if(L.pay==="gpm") h+=F(p+".g","체증률",{unit:"%",dec:1});
     if(L.pay==="mixed") h+=F(p+".mixPct","분할상환 비율",{unit:"%"});
@@ -427,7 +437,9 @@ function validate(id){
   if(id==="asset") st.loans.forEach((L,i)=>{ const p="loans."+i;
     if(!(+L.P>0)) bad(p+".P","잔액을 넣어 주세요");
     if(!(+L.term>0)) bad(p+".term","1년 이상");
-    if(+L.grace>+L.term) bad(p+".grace","남은 기간보다 짧아야 합니다"); });
+    if(+L.grace>+L.term) bad(p+".grace","남은 기간보다 짧아야 합니다");
+    if(L.rate==="hybrid"&&!(+L.fixY>0&&+L.fixY<+L.term)) bad(p+".fixY","0보다 크고 남은 기간보다 짧게");
+    if(!(+L.r1>=0&&+L.r1<30)) bad(p+".r1","0~30% 사이"); });
   if(id==="pen") ["A","B"].forEach(K=>{ if(K==="B"&&!st.hasSpouse) return; const P=st[K];
     if(+P.pps.age&&+P.pps.age<55) bad(K+".pps.age","만 55세 이상");
     if(P.sev.type!=="none"&&!isPub(K)&&P.job!=="none"&&+P.sev.hireY>Y0) bad(K+".sev.hireY","올해 이전 연도");
@@ -595,6 +607,64 @@ function lineChart(series,o){
     g+=`<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w||2.2}" stroke-linejoin="round"${s.dash?' stroke-dasharray="5 4"':""}/>`; });
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label||"차트")}">${g}</svg>`;
 }
+/* 연도별 계산 과정: 수입 → 지출 → 금융자산 */
+function rowDetail(r,rv,m){
+  const M=v=>m(rv(v,r.Y));
+  const row=(l,v,c)=>`<div class="kv ${c||""}"><span>${l}</span><span>${v}</span></div>`;
+  const two=R.people.length>1;
+  let h=r.events.length?`<div class="evs">${r.events.map(e=>`<span class="evc">${esc(e)}</span>`).join("")}</div>`:"";
+  /* 수입 */
+  h+=`<div class="sec">① 수입</div>`;
+  if(r.gross>0){
+    const [a,b]=r.grossBy;
+    if(two&&a>0&&b>0) h+=row("세전 소득 <small>나 + 배우자</small>",`${M(a)} + ${M(b)} = <b>${M(r.gross)}</b>`);
+    else h+=row("세전 소득"+(two?` <small>${a>0?"나":"배우자"}</small>`:""),M(r.gross));
+    h+=row("− 4대보험 · 연금 기여금",M(r.soc),"ind")+row("− 소득세 · 지방세",M(r.tax),"ind")+row("= 세후 근로·사업소득",`<b>${M(r.netWork)}</b>`,"sum");
+  }
+  if(r.pubPen) h+=row("+ 공적연금",M(r.pubPen));
+  if(r.priv) h+=row("+ 퇴직연금 · 개인연금",M(r.priv));
+  if(r.hp) h+=row("+ 주택연금",M(r.hp));
+  if(r.penTax) h+=row("− 연금소득세",M(r.penTax),"ind");
+  h+=row("수입 합계",`<b>${M(r.income)}</b>`,"tot");
+  /* 지출 */
+  const lv=r.lv, fixTot=(lv.kind==="detail"?lv.fix:0)+r.loan+r.kid;
+  h+=`<div class="sec">② 지출</div>`;
+  h+=`<button type="button" class="kv tog" data-spend><span>지출 합계 <i>${ui.openSpend?"접기 ▴":"내역 보기 ▾"}</i></span><span><b>${M(r.spend)}</b></span></button>`;
+  if(ui.openSpend){
+    let d="";
+    if(lv.kind==="detail"){
+      d+=row("고정지출",`<b>${M(fixTot)}</b>`);
+      d+=row("· 생활 고정비",M(lv.fix),"ind");
+      if(r.loan) d+=row("· 대출 상환",`${M(r.loan)} <small>(이자 ${M(r.loanInt)} + 원금 ${M(r.loanPrin)})</small>`,"ind");
+      if(r.kid) d+=row("· 자녀 교육비 · 용돈",M(r.kid),"ind");
+      d+=row("변동지출",`<b>${M(lv.var)}</b>`);
+      d+=row("연간 지출 <small>여행·경조사·명절</small>",`<b>${M(lv.ann)}</b>`);
+    } else if(lv.kind==="simple"){
+      d+=row("생활비 <small>간편 입력 총액</small>",`<b>${M(lv.base)}</b>`);
+      if(fixTot) d+=row("고정지출",`<b>${M(fixTot)}</b>`);
+      if(r.loan) d+=row("· 대출 상환",`${M(r.loan)} <small>(이자 ${M(r.loanInt)} + 원금 ${M(r.loanPrin)})</small>`,"ind");
+      if(r.kid) d+=row("· 자녀 교육비 · 용돈",M(r.kid),"ind");
+      d+=`<p class="note">상세 모드에서 생활비를 입력하면 고정·변동지출로 나눠 보여 드립니다.</p>`;
+    } else {
+      d+=row("은퇴 후 생활비",`<b>${M(lv.base)}</b>`);
+      if(lv.med) d+=row("의료비 (만 75세 이후)",M(lv.med));
+      if(r.hiLocal) d+=row("지역 건강보험료",M(r.hiLocal));
+      if(r.loan) d+=row("대출 상환",`${M(r.loan)} <small>(이자 ${M(r.loanInt)})</small>`);
+      if(r.kid) d+=row("자녀 비용",M(r.kid));
+    }
+    if(lv.kind!=="post"&&r.hiLocal) d+=row("지역 건강보험료",M(r.hiLocal));
+    if(r.ppsSave) d+=row("연금저축 · IRP 납입 <small>저축</small>",M(r.ppsSave));
+    h+=`<div class="spd">${d}</div>`;
+  }
+  /* 자산 */
+  h+=`<div class="sec">③ 금융자산</div>`;
+  h+=row("연초 금융자산",M(r.finStart))+row("+ 운용수익 <small>"+(R.ret*100).toFixed(1)+"%</small>",M(r.retInc),"ind")+
+     row((r.net>=0?"+ ":"− ")+"수입 − 지출",M(Math.abs(r.net)),"ind");
+  if(r.lump) h+=row("+ 퇴직급여 일시금 <small>세후</small>",M(r.lump),"ind");
+  h+=row("= 연말 금융자산",`<b>${M(r.fin)}</b>`,"tot");
+  if(ui.real) h+=`<p class="note">올해 가치 보기에서는 금액을 해마다 물가로 나눠 표시해, 연초 금액이 윗줄 연말 금액과 조금 다를 수 있습니다.</p>`;
+  return h;
+}
 function pFlow(){
   const rv=(v,Y)=>ui.real?real(v,Y):v;
   const pts=R.rows.map(r=>({x:r.ageA,y:rv(r.fin,r.Y)}));
@@ -604,19 +674,15 @@ function pFlow(){
   let t=`<table class="t"><thead><tr><th>연도·나이</th><th>근로·사업(세후)</th><th>연금</th><th>지출</th><th>순흐름</th><th>금융자산</th></tr></thead><tbody>`;
   R.rows.forEach((r,i)=>{
     const pen=r.pubPen+r.priv+r.hp-r.penTax, cls=[r.phase==="post"?"post":"",r.events.length?"ev":"",r.fin<0?"neg":""].join(" ");
-    t+=`<tr class="${cls}" data-row="${i}"><td>${r.Y} · ${r.ageA}</td><td>${r.netWork?m(rv(r.netWork,r.Y)):"—"}</td><td>${pen>0?m(rv(pen,r.Y)):"—"}</td>
+    const evt=r.events.length?`<small class="evt">${esc(r.events[0])}${r.events.length>1?" 외 "+(r.events.length-1):""}</small>`:"";
+    t+=`<tr class="${cls}" data-row="${i}"><td>${r.Y} · ${r.ageA}${evt}</td><td>${r.netWork?m(rv(r.netWork,r.Y)):"—"}</td><td>${pen>0?m(rv(pen,r.Y)):"—"}</td>
       <td>${m(rv(r.spend,r.Y))}</td><td class="${r.net+r.lump>=0?"pos":"neg"}">${m(rv(r.net+r.lump,r.Y))}</td><td class="f"><b>${m(rv(r.fin,r.Y))}</b></td></tr>`;
-    if(ui.openRow===i){
-      const kv=(a,b)=>`<div class="kv"><span>${a}</span><span>${m(rv(b,r.Y))}만</span></div>`;
-      t+=`<tr class="det"><td colspan="6"><div class="dw">${r.events.length?`<p class="note" style="margin:0 0 6px">${r.events.join(" · ")}</p>`:""}
-        ${kv("세전 소득",r.gross)}${kv("4대보험 · 기여금",r.soc)}${kv("소득세",r.tax)}${kv("공적연금",r.pubPen)}${kv("퇴직·개인연금",r.priv)}${r.hp?kv("주택연금",r.hp):""}
-        ${kv("연금 세금",r.penTax)}${kv("생활비",r.living)}${r.kid?kv("자녀",r.kid):""}${r.loan?kv("대출 상환",r.loan):""}${r.ppsSave?kv("연금저축 납입",r.ppsSave):""}
-        ${r.hiLocal?kv("지역 건강보험",r.hiLocal):""}${r.lump?kv("퇴직급여 일시금 (세후)",r.lump):""}</div></td></tr>`;
-    }
+    if(ui.openRow===i) t+=`<tr class="det"><td colspan="6"><div class="dw">${rowDetail(r,rv,m)}</div></td></tr>`;
   });
   t+="</tbody></table>";
   h+=card("연도별 현금흐름",`<div class="seg noprint" style="margin-bottom:8px"><button data-real="1" class="${ui.real?"on":""}">올해 가치</button><button data-real="0" class="${!ui.real?"on":""}">명목 금액</button></div>
-    <div class="tblw">${t}</div><p class="note">단위 만원 · 행을 누르면 세부 내역 · 회색 줄은 은퇴 후 · 노란 표시는 이벤트가 있는 해</p>`);
+    <div class="tblw">${t}</div><p class="note">단위 만원 · <b>행을 누르면 계산 과정</b>이 펼쳐집니다 · 회색 줄은 은퇴 후 · 노란 글씨는 그해 일어나는 일</p>
+    ${ui.real?`<p class="note">'올해 가치'는 물가를 빼고 지금 돈으로 바꾼 금액이라 연봉 인상분이 실제보다 작아 보입니다. 실제 받는 금액은 '명목 금액'으로 보세요.</p>`:""}`);
   return h;
 }
 function pAsset(){
@@ -726,6 +792,7 @@ function pPlan(){
 }
 function bindResult(){
   document.querySelectorAll("[data-row]").forEach(tr=>tr.onclick=()=>{ const i=+tr.dataset.row; ui.openRow=ui.openRow===i?null:i; const y=window.scrollY; renderResult(); window.scrollTo(0,y); });
+  document.querySelectorAll("[data-spend]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); ui.openSpend=!ui.openSpend; const y=window.scrollY; renderResult(); window.scrollTo(0,y); });
   document.querySelectorAll("[data-real]").forEach(b=>b.onclick=()=>{ ui.real=b.dataset.real==="1"; const y=window.scrollY; renderResult(); window.scrollTo(0,y); });
   let rt=null;
   document.querySelectorAll("[data-ov]").forEach(s=>s.oninput=()=>{ ui.ov[s.dataset.ov]=+s.value;

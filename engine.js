@@ -213,7 +213,7 @@ function compute(st, ov){
 
   /* ── 1단계: 연도별 근로·사업소득과 사회보험 (자산과 무관한 부분) ── */
   function srcYear(c,Y,P){
-    const z={wage:0,bonIn:0,bonEx:0,mWage:0,biz:0,other:0,nontax:0,daily:0,dIns:0,dayList:[]};
+    const z={wage:0,bonIn:0,bonEx:0,mWage:0,biz:0,other:0,nontax:0,daily:0,dIns:0,dayList:[],promo:[]};
     if(!P.works) return z;
     const sy=c.startY!==""&&c.startY!=null?num(c.startY):P.fStart;
     const ey=c.endY!==""&&c.endY!=null?num(c.endY):P.retireY-1;
@@ -222,11 +222,11 @@ function compute(st, ov){
     if(c.type==="salary"){
       let base=W(c.amt)*gf;
       if(c.promoMode==="each"&&Array.isArray(c.promoList)){
-        c.promoList.forEach(pm=>{const py=num(pm.y); if(py>Y0&&py<=Y) base+=W(pm.up)*Math.pow(1+gr,Y-py);});
+        c.promoList.forEach(pm=>{const py=num(pm.y); if(py>Y0&&py<=Y) base+=W(pm.up)*gf; if(py===Y&&py>Y0&&num(pm.up)>0) z.promo.push(num(pm.up));});
       } else {
         const n=num(c.promoN);
         for(let k=0;k<n;k++){const py=num(c.promoY)+k*Math.max(1,num(c.promoCycle));
-          if(py>Y0&&py<=Y) base+=W(c.promoUp)*Math.pow(1+gr,Y-py);}
+          if(py>Y0&&py<=Y) base+=W(c.promoUp)*gf; if(py===Y&&py>Y0&&num(c.promoUp)>0) z.promo.push(num(c.promoUp));}
       }
       z.wage=base; z.mWage=base/12;
       /* 성과급: 고정 금액(연봉 인상률만큼 증가) · 월급 대비 %(그해 월급 기준) · 혼합 */
@@ -246,11 +246,11 @@ function compute(st, ov){
     return z;
   }
   function personYear(P,Y){
-    const r={wage:0,bonIn:0,bonEx:0,mWage:0,biz:0,other:0,nontax:0,daily:0,dIns:0,dayList:[],side:0};
+    const r={wage:0,bonIn:0,bonEx:0,mWage:0,biz:0,other:0,nontax:0,daily:0,dIns:0,dayList:[],side:0,promo:[]};
     P.p.src.forEach(c=>{const z=srcYear(c,Y,P);
       r.wage+=z.wage;r.bonIn+=z.bonIn;r.bonEx+=z.bonEx;r.mWage=Math.max(r.mWage,z.mWage);
       r.biz+=z.biz;r.other+=z.other;r.nontax+=z.nontax;r.daily+=z.daily;r.dIns+=z.dIns;
-      r.dayList=r.dayList.concat(z.dayList);});
+      r.dayList=r.dayList.concat(z.dayList); r.promo=r.promo.concat(z.promo);});
     const age=Y-P.birthY, s=P.p.side;
     if(Y>=P.retireY&&age<num(s.endAge)&&num(s.amt)>0) r.side=W(s.amt)*12*inflF(Y);
     r.wageT=r.wage+r.bonIn+r.bonEx+r.side;
@@ -385,6 +385,14 @@ function compute(st, ov){
   const loans=st.loans.map(loanCfg);
   const monthsToEnd=(lastY-Y0)*12+(13-M0);
   const LS=loans.map(c=>buildLoan(c,monthsToEnd));
+  const LOAN_NM={mortgage:"주담대",policy_mortgage:"정책 주담대",jeonse:"전세대출",policy_jeonse:"정책 전세대출",credit:"신용대출",negative:"마이너스통장",deposit:"예적금담보대출",other:"대출"};
+  const loanEv={}, yOfK=k=>Y0+Math.floor((M0-1+k)/12);
+  const addEv=(Y,t)=>{(loanEv[Y]=loanEv[Y]||[]).push(t);};
+  LS.forEach((S,i)=>{ if(!S.length) return; const c=loans[i];
+    const nm=(LS.length>1?(i+1)+"번 ":"")+(LOAN_NM[c.kind]||"대출");
+    if(!(c.pay==="bullet"&&c.roll==="extend")) addEv(yOfK(S.length-1),nm+" 완납");
+    if(c.rateType==="hybrid"&&Math.round(c.fixY*12)>0&&Math.round(c.fixY*12)<S.length)
+      addEv(yOfK(Math.round(c.fixY*12)),nm+" 변동금리 전환 ("+c.r1+"%→"+c.r2+"%)"); });
   const loanYear=Y=>{let pay=0,int=0,prin=0,bal=0;
     for(let m=1;m<=12;m++){const k=Y*12+(m-1)-(Y0*12+M0-1);
       LS.forEach((S,i)=>{ if(k>=0&&k<S.length){pay+=S[k].pay;int+=S[k].int;prin+=S[k].prin;} });}
@@ -448,6 +456,10 @@ function compute(st, ov){
       gross+=pr[i].gross; soc+=so[i].soc; tax+=tx;
     });
     row.gross=gross; row.soc=soc; row.tax=tax; row.netWork=gross-soc-tax;
+    row.grossBy=pr.map(r=>r.gross); row.socBy=so.map(o=>o.soc);
+    people.forEach((P,i)=>{ const who=i?"배우자 ":"";
+      pr[i].promo.forEach(u=>row.events.push(who+"승진 (연봉 +"+Math.round(u).toLocaleString()+"만)"));
+      if(P.fut&&Y===P.fStart&&Y>Y0) row.events.push(who+"일 시작"); });
     row.side=pr.reduce((a,r)=>a+r.side,0);
 
     /* 공적연금 */
@@ -520,20 +532,25 @@ function compute(st, ov){
 
     /* 지출 */
     const phasePre=Y<A.retireY;
-    let living=0;
+    let living=0; const lv={kind:phasePre?(simple?"simple":"detail"):"post",fix:0,var:0,ann:0,base:0,med:0};
     if(phasePre){
-      if(simple) living=W(ex.month)*12*Math.pow(1+num(ex.g)/100,t);
+      if(simple){ lv.base=W(ex.month)*12*Math.pow(1+num(ex.g)/100,t); living=lv.base; }
       else{
-        living=(W(ex.fHousing)+W(ex.fIns)+W(ex.fComm)+W(ex.fCar)+W(ex.fPocket)+W(ex.fEtc))*12*Math.pow(1+num(ex.fixG)/100,t)
-              +(W(ex.vFood)+W(ex.vFun)+W(ex.vShop)+W(ex.vDaily)+W(ex.vMed)+W(ex.vEtc))*12*Math.pow(1+num(ex.varG)/100,t)
-              +(W(ex.travel)+W(ex.misc))*Math.pow(1+num(ex.miscG)/100,t);
+        lv.fix=(W(ex.fHousing)+W(ex.fIns)+W(ex.fComm)+W(ex.fCar)+W(ex.fPocket)+W(ex.fEtc))*12*Math.pow(1+num(ex.fixG)/100,t);
+        lv.var=(W(ex.vFood)+W(ex.vFun)+W(ex.vShop)+W(ex.vDaily)+W(ex.vMed)+W(ex.vEtc))*12*Math.pow(1+num(ex.varG)/100,t);
+        lv.ann=(W(ex.travel)+W(ex.misc))*Math.pow(1+num(ex.miscG)/100,t);
+        living=lv.fix+lv.var+lv.ann;
       }
       living=Math.max(0,living-W(ov.save||0)*12*inflF(Y));
     } else {
       const base=Math.max(0,num(post.exp)+(ov.postAdd||0));
-      living=W(base)*12*inflF(Y)*(ageA>=num(post.dropAge)?num(post.dropPct)/100:1);
-      if(ageA>=75) living+=W(post.med)*inflF(Y);
+      lv.base=W(base)*12*inflF(Y)*(ageA>=num(post.dropAge)?num(post.dropPct)/100:1);
+      lv.med=ageA>=75?W(post.med)*inflF(Y):0;
+      living=lv.base+lv.med;
+      if(ageA===num(post.dropAge)) row.events.push("생활비 "+num(post.dropPct)+"%로 조정");
+      if(ageA===75&&lv.med>0) row.events.push("의료비 추가 시작");
     }
+    row.lv=lv;
     let kid=0;
     kidYs.forEach((ky,ki)=>{const a=Y-ky, gE=Math.pow(1+eduInf,t);
       if(a>=4&&a<7)kid+=E.e0*12*gE;
@@ -542,15 +559,18 @@ function compute(st, ov){
       else if(a>=16&&a<19)kid+=(E.e3+E.a3)*12*gE;
       else if(a>=19&&a<23)kid+=E.e4*gE+E.a4*12*gE;
       if(a===28)kid+=E.sup*gE;
-      if(a===19) row.events.push("자녀"+(ki+1)+" 대학");
+      const kn=kidYs.length>1?"자녀"+(ki+1)+" ":"자녀 ";
+      const ev={0:"출생",7:"초등학교 입학",13:"중학교 입학",16:"고등학교 입학",19:"대학 입학",23:"대학 졸업"}[a];
+      if(ev&&(a>0||ky>=Y0)) row.events.push(kn+ev);
+      if(a===28&&E.sup>0) row.events.push(kn+"독립 지원");
     });
     const ln=loanYear(Y);
-    row.living=living; row.kid=kid; row.loan=ln.pay; row.loanInt=ln.int; row.loanBal=ln.bal;
-    if(ln.pay>0&&ln.bal===0&&loanYear(Y-1).bal>0) row.events.push("대출 완납");
+    row.living=living; row.kid=kid; row.loan=ln.pay; row.loanInt=ln.int; row.loanPrin=ln.prin; row.loanBal=ln.bal;
+    (loanEv[Y]||[]).forEach(e=>row.events.push(e));
     row.spend=living+kid+ln.pay+ppsSave+row.hiLocal;
     row.income=row.netWork+pubPen+priv+row.hp-row.penTax;
     row.net=row.income-row.spend;
-    row.finStart=fin;
+    row.finStart=fin; row.retInc=fin*ret;
     fin=fin*(1+ret)+row.net+lump;
     row.fin=fin; row.finReal=fin/inflF(Y);
     row.phase=phasePre?"pre":"post";
@@ -656,6 +676,14 @@ function eok(v){
   return sign+am.toLocaleString()+"만";
 }
 
-const API={dbMonths,Y0,M0,defaults,newSrc,newPerson,newLoan,LOAN_PRESET,srcTypeOf,sevTypeOf,compute,eok,npsNormalAge,hpFactor};
+/* 대출 화면용 미리보기: 첫 달 상환액, 금리 전환 후 상환액 */
+function loanPreview(L){
+  const c=loanCfg(L), S=buildLoan(c,Math.round(c.term*12));
+  if(!S.length) return null;
+  const k=Math.round(c.fixY*12);
+  return {first:S[0].pay, switchPay:(L.rate==="hybrid"&&k>0&&k<S.length)?S[k].pay:null,
+    totalInt:S.reduce((a,x)=>a+x.int,0)};
+}
+const API={loanPreview,dbMonths,Y0,M0,defaults,newSrc,newPerson,newLoan,LOAN_PRESET,srcTypeOf,sevTypeOf,compute,eok,npsNormalAge,hpFactor};
 if(typeof module!=="undefined"&&module.exports) module.exports=API; else root.Engine=API;
 })(typeof window!=="undefined"?window:this);
